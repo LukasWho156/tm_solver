@@ -7,7 +7,7 @@ pub struct Code {
 
 impl ToString for Code {
     fn to_string(&self) -> String {
-        format!("{}{}{}", self.blue, self.yellow, self.purple)
+        format!("\x1b[34m{}\x1b[33m{}\x1b[35m{}\x1b[0m", self.blue, self.yellow, self.purple)
     }
 }
 
