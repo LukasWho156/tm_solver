@@ -123,8 +123,37 @@ fn rule_21(input: &Code) -> Option<u8> {
     Some(rule_20(input).unwrap() % 2)
 }
 
-pub const RULES: [fn(input: &Code) -> Option<u8>; 21] = [
+fn rule_22(input: &Code) -> Option<u8> {
+    if input.blue < input.yellow && input.yellow < input.purple {
+        return Some(0);
+    }
+    if input.blue > input.yellow && input.yellow > input.purple {
+        return Some(1);
+    }
+    return Some(2);
+}
+
+// another rehash of RULESET 1
+fn rule_23(input: &Code) -> Option<u8> { compare_values(input.blue + input.yellow + input.purple, 6) }
+
+// RULES 24 and 25 are sorta similar, but I don't think there's a lot of
+// abstraction possible 
+fn rule_24(input: &Code) -> Option<u8> {
+    Some((input.blue + 1 == input.yellow) as u8
+    + (input.yellow + 1 == input.purple) as u8)
+}
+
+fn rule_25(input: &Code) -> Option<u8> {
+    let r = rule_24(input).unwrap();
+    if r > 0 {
+        return Some(r);
+    } 
+    Some((input.blue == input.yellow + 1) as u8
+    + (input.yellow == input.purple + 1) as u8)
+}
+
+pub const RULES: [fn(input: &Code) -> Option<u8>; 25] = [
     rule_1, rule_2, rule_3, rule_4, rule_5, rule_6, rule_7, rule_8, rule_9,
     rule_10, rule_11, rule_12, rule_13, rule_14, rule_15, rule_16, rule_17,
-    rule_18, rule_19, rule_20, rule_21,
+    rule_18, rule_19, rule_20, rule_21, rule_22, rule_23, rule_24, rule_25,
 ];

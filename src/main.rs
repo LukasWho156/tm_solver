@@ -110,6 +110,9 @@ fn main() {
         construct_tree::optimal_tree(&unique_solutions, &solutions, 3)
     });
     let mut tree = tree.unwrap();
+    if verbose {
+        tree.print(0);
+    }
 
     // construct an optimal solution tree
    /*  println!("Construct optimal tree ...");

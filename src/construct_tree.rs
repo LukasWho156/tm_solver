@@ -195,7 +195,7 @@ fn construct_trees_rec<T: Clone>(entries: &Vec<Feasible<T>>,
     solution_map: &HashMap<Vec<u8>, Vec<T>>,
     current_level: u8,
     abort_level: Option<u8>,
-    test_per_round: u8,
+    tests_per_round: u8,
     optimal_depth: usize,
     used_tests: &Vec<Test>) -> Vec<BinaryTree<T>> {
 
@@ -236,7 +236,7 @@ fn construct_trees_rec<T: Clone>(entries: &Vec<Feasible<T>>,
 
         // if we are in the middle of a round, make sure to mark
         // used tests for the next level.
-        let next_splits = match current_level % test_per_round == test_per_round - 1 {
+        let next_splits = match current_level % tests_per_round == tests_per_round - 1 {
             true => Vec::new(),
             false => {
                 let mut v = used_tests.clone();
@@ -259,30 +259,43 @@ fn construct_trees_rec<T: Clone>(entries: &Vec<Feasible<T>>,
         }
 
         // construct possible correct and incorrect subtrees
-        let correct_trees = construct_trees_rec(
-            &node.correct,
-            &tests,
-            solution_map,
-            current_level + 1,
-            abort,
-            test_per_round,
-            optimal_depth,
-            &next_splits);
-        let incorrect_trees = construct_trees_rec(
-            &node.incorrect,
-            &tests,
-            solution_map,
-            current_level + 1,
-            abort,
-            test_per_round,
-            optimal_depth,
-            &next_splits);
+        let correct_trees = match current_level % tests_per_round == tests_per_round - 1 {
+            false => construct_trees_rec(
+                &node.correct,
+                &tests,
+                solution_map,
+                current_level + 1,
+                abort,
+                tests_per_round,
+                optimal_depth,
+                &next_splits),
+            true => match optimal_tree(&node.correct, solution_map, tests_per_round) {
+                Some(r) => vec![r],
+                None => Vec::new(),
+            },
+        };
+        let incorrect_trees = match current_level % tests_per_round == tests_per_round - 1 {
+            false => construct_trees_rec(
+                &node.incorrect,
+                &tests,
+                solution_map,
+                current_level + 1,
+                abort,
+                tests_per_round,
+                optimal_depth,
+                &next_splits),
+            true => match optimal_tree(&node.incorrect, solution_map, tests_per_round) {
+                Some(r) => vec![r],
+                None => Vec::new(),
+            },
+        };
 
         // check the validity of each combination
+        let sub_levels = tests_per_round - (current_level % tests_per_round) - 1;
         for correct_tree in &correct_trees {
             'outer: for incorrect_tree in &incorrect_trees {
-                for (test_c, res_c) in correct_tree.get_tests(current_level) {
-                    for (test_i, res_i) in incorrect_tree.get_tests(current_level) {
+                for (test_c, res_c) in correct_tree.get_tests(sub_levels) {
+                    for (test_i, res_i) in incorrect_tree.get_tests(sub_levels) {
                         if test_c == test_i && res_c != res_i {
                             continue 'outer;
                         }
@@ -299,9 +312,9 @@ fn construct_trees_rec<T: Clone>(entries: &Vec<Feasible<T>>,
                         continue;
                     }
                 }
-                if current_level % test_per_round == 0 {
+                if current_level % tests_per_round == 0 {
                     let mut results = tests.clone();
-                    for (test, res) in branch.get_tests(test_per_round - 1) {
+                    for (test, res) in branch.get_tests(tests_per_round - 1) {
                         let mut set = HashSet::new();
                         set.insert(res);
                         results[test] = set;
