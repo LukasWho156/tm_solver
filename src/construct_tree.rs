@@ -1,41 +1,33 @@
+//! Provides a general algorithm for constructing an optimal binary
+//! tree from a set of feasible solutions for "guess who"-style binary search
+//! games.
+//! 
+//! For the game Turing Machine, there's an additional constraint that three
+//! consecutive tests have to be performed with the same input code (this
+//! series of tests is called a round). The algorithm thus allows you to
+//! specify the number of tests per round.
 use std::{collections::{HashSet, HashMap}, cmp::Ordering};
 
-pub type Test = (usize, u8);
+/// A possible solution to the problem, including its test results (represented
+/// by the first element of the tuple).
+/// 
+/// A solution should be uniquely identifyable by its test results
 pub type Feasible<T> = (Vec<u8>, T);
 
-#[derive(Debug, Clone)]
-pub struct Branch<T> {
-    pub test: Test,
-    pub correct: BinaryTree<T>,
-    pub incorrect: BinaryTree<T>,
-    pub code: Option<T>,
-}
+/// A representation of a test, consisting of its test number as well as its
+/// result.
+pub type Test = (usize, u8);
 
-impl<T> Branch<T> {
-
-    fn get_tests(&self, sub_levels: u8) -> HashSet<Test> {
-        let mut tests = HashSet::new();
-        tests.insert(self.test);
-        if sub_levels > 0 {
-            for c in self.correct.get_tests(sub_levels - 1) {
-                tests.insert(c);
-            }
-            for i in self.incorrect.get_tests(sub_levels - 1) {
-                tests.insert(i);
-            }
-        }
-        tests
-    }
-
-    fn max_depth(&self) -> u8 {
-        1 + self.correct.max_depth().max(self.incorrect.max_depth())
-    }
-
-    fn total_depth(&self) -> usize {
-        1 + self.correct.total_depth() + self.incorrect.total_depth()
-    }
-}
-
+/// A binary tree used to navigate the solution space with given tests.
+/// 
+/// A tree consists of branches, which have two children, and leaves, which
+/// correspond to the feasible solutions.
+/// 
+/// To find the correct solution, start at the root of the binary tree and
+/// -- assuming that it is a branch -- evaluate its test. Depending on whether
+/// the result of that test is true or false, move on to the correct or
+/// incorrect child, respectively. Repeat until you reach a leaf, at which
+/// point you've found the correct combination.
 #[derive(Debug, Clone)]
 pub enum BinaryTree<T> {
     Leaf(T),
@@ -47,6 +39,8 @@ unsafe impl<T> Sync for BinaryTree<T> {}
 
 impl<T> BinaryTree<T> {
 
+    /// Return the maximum depth of the tree (leaves do not have depth).
+    /// An optimal tree minimizes this value.
     pub fn max_depth(&self) -> u8 {
         match self {
             BinaryTree::Leaf(_) => 0,
@@ -54,6 +48,8 @@ impl<T> BinaryTree<T> {
         }
     }
 
+    /// Return the total depth of the tree (leaves do not have depth).
+    /// An optimal tree minimizes this value.
     pub fn total_depth(&self) -> usize {
         match self {
             BinaryTree::Leaf(_) => 0,
@@ -61,6 +57,8 @@ impl<T> BinaryTree<T> {
         }
     }
 
+    /// Return the number of nodes within this tree. Pretty pointless, but I
+    /// only realized this after implementing it.
     pub fn size(&self) -> u8 {
         match self {
             BinaryTree::Leaf(_) => 1,
@@ -68,6 +66,9 @@ impl<T> BinaryTree<T> {
         }
     }
 
+    /// Get the tests required to follow this tree sub_levels deep. This is
+    /// important to make sure it's actually possible to perform all tests
+    /// of a round using the same code.
     pub fn get_tests(&self, sub_levels: u8) -> HashSet<Test> {
         match self {
             BinaryTree::Leaf(_) => HashSet::new(),
@@ -79,6 +80,7 @@ impl<T> BinaryTree<T> {
 
 impl<T: ToString> BinaryTree<T> {
 
+    /// print a visual representation of the tree.
     pub fn print(&self, indent: u8) {
         match self {
             BinaryTree::Leaf(c) => print!("{}\n", c.to_string()),
@@ -100,6 +102,52 @@ impl<T: ToString> BinaryTree<T> {
 
 }
 
+/// A branch within the tree. See the description of BinaryTree for more
+/// details.
+#[derive(Debug, Clone)]
+pub struct Branch<T> {
+    /// which test to perform.
+    pub test: Test,
+    /// the child tree containing all feasible solutions that pass the test.
+    pub correct: BinaryTree<T>,
+    /// the child tree containing all feasible soluitons that do not pass the
+    /// test.
+    pub incorrect: BinaryTree<T>,
+    /// an optional code that can be used to perform all the tests required
+    /// for this round.
+    pub code: Option<T>,
+}
+
+impl<T> Branch<T> {
+
+    /// see above
+    pub fn get_tests(&self, sub_levels: u8) -> HashSet<Test> {
+        let mut tests = HashSet::new();
+        tests.insert(self.test);
+        if sub_levels > 0 {
+            for c in self.correct.get_tests(sub_levels - 1) {
+                tests.insert(c);
+            }
+            for i in self.incorrect.get_tests(sub_levels - 1) {
+                tests.insert(i);
+            }
+        }
+        tests
+    }
+
+    /// see above
+    pub fn max_depth(&self) -> u8 {
+        1 + self.correct.max_depth().max(self.incorrect.max_depth())
+    }
+
+    /// see above
+    pub fn total_depth(&self) -> usize {
+        1 + self.correct.total_depth() + self.incorrect.total_depth()
+    }
+}
+
+/// The result of performing a certain test and sorting the feasible solutions
+/// by whether they passed the test or not.
 #[derive(Debug)]
 struct TestResult<T> {
     test: Test,
@@ -107,21 +155,30 @@ struct TestResult<T> {
     incorrect: Vec<Feasible<T>>,
 }
 
-impl<T> TestResult<T> {
-    fn estimated_value(&self) -> usize { self.correct.len() * self.incorrect.len() }
+impl<T: Clone> TestResult<T> {
+
+    /// Perform a test on a set of feasible solutions and return the results.
+    fn from_test(entries: &Vec<Feasible<T>>, (i, v): Test) -> TestResult<T> {
+        let mut correct = Vec::new();
+        let mut incorrect = Vec::new();
+        for e in entries {
+            if e.0[i] == v {
+                correct.push(e.clone());
+            } else {
+                incorrect.push(e.clone());
+            }
+        }
+        TestResult { test: (i, v), correct, incorrect }
+    }
 }
 
-fn sort_by_split<T: Clone>(entries: &Vec<Feasible<T>>, (i, v): Test) -> (Vec<Feasible<T>>, Vec<Feasible<T>>) {
-    let mut correct = Vec::new();
-    let mut incorrect = Vec::new();
-    for e in entries {
-        if e.0[i] == v {
-            correct.push(e.clone());
-        } else {
-            incorrect.push(e.clone());
-        }
-    }
-    (correct, incorrect)
+impl<T> TestResult<T> {
+
+    /// A heuristic value determining how promising this test is to perform.
+    /// 
+    /// Under the hood, this simply tries to split the current test results as
+    /// evenly as possible.
+    fn estimated_value(&self) -> usize { self.correct.len().min(self.incorrect.len()) }
 }
 
 fn get_permutations(input: &Vec<HashSet<u8>>) -> Vec<Vec<u8>> {
@@ -208,17 +265,17 @@ fn construct_trees_rec<T: Clone>(entries: &Vec<Feasible<T>>,
     let mut nodes: Vec<TestResult<T>> = Vec::new();
     tests.iter().enumerate().for_each(|(i, s)| {
         s.iter().for_each(|v| {
-            let split = (i, *v);
-            // ignore splits if the same test has been used in a previous attempt
+            let test = (i, *v);
+            // ignore tests if the same test has been used in a previous attempt
             // this round
             if used_tests.iter().find(|(j, _)| *j == i).is_some() {
                 return;
             }
-            let (correct, incorrect) = sort_by_split(entries, split);
-            if correct.is_empty() || incorrect.is_empty() {
+            let res = TestResult::from_test(entries, test);
+            if res.correct.is_empty() || res.incorrect.is_empty() {
                 return;
             }
-            nodes.push(TestResult { test: split, correct, incorrect });
+            nodes.push(res);
         });
     });
 

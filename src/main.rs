@@ -22,15 +22,15 @@ fn do_task<F: Send + 'static + FnOnce() -> T, T: Send + 'static>(message: &str, 
         let _ = sender.send(res);
     });
     loop {
+        if let Ok(t) = receiver.try_recv() {
+            print!("{} \n", CHECKMARK);
+            return t;
+        }
         print!("{} ", LOADING[i]);
         let _ = std::io::stdout().flush();
         i = (i + 1) % 6;
         thread::sleep(Duration::from_millis(100));
         print!("\x08\x08");
-        if let Ok(t) = receiver.try_recv() {
-            print!("{} \n", CHECKMARK);
-            return t;
-        }
     }
 }
 
