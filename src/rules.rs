@@ -7,7 +7,7 @@
 //! Criteria cards that can have multiple rulesets are not yet implemented.
 
 /// A three-digit code
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Code {
     pub blue: u8,
     pub yellow: u8,

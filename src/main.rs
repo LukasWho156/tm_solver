@@ -1,9 +1,11 @@
 mod rules;
 mod construct_tree;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Iter;
+use std::{collections::HashMap, sync::Arc};
 use std::io::Write;
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -34,6 +36,34 @@ fn do_task<F: Send + 'static + FnOnce() -> T, T: Send + 'static>(message: &str, 
     }
 }
 
+fn categorize_codes(codes: &HashSet<Code>, rules: &Vec<usize>) -> HashMap<Vec<u8>, Vec<Code>> {
+    let mut solutions: HashMap<Vec<u8>, Vec<Code>> = HashMap::new();
+    codes.iter().for_each(|code| {
+        let results: Vec<u8> = rules.iter().filter_map(|rule| {
+            RULES[*rule](&code)
+        }).collect();
+        if results.len() < rules.len() {
+            return;
+        }
+        match solutions.get_mut(&results) {
+            Some(cur) => cur.push(code.clone()),
+            None => {
+                solutions.insert(results, vec![code.clone()]);
+            },
+        }
+    });
+    solutions
+}
+
+fn find_unique(solutions: &HashMap<Vec<u8>, Vec<Code>>) -> Vec<Feasible<Code>> {
+    solutions.iter().filter_map(|(k, v)| {
+        if v.len() == 1 {
+            return Some((k.clone(), v[0].clone()));
+        }
+        None
+    }).collect()
+}
+
 fn main() {
 
     // what rules are used?
@@ -57,6 +87,7 @@ fn main() {
         println!("Not enough input rules, aborting.");
         return;
     }
+    let rules = Arc::new(Mutex::new(rules));
 
     // create all possible 3-digit codes
     let codes = do_task("Generating codes ...", || (0..125).map(|i| {
@@ -65,35 +96,47 @@ fn main() {
             yellow: (i / 5) % 5 + 1,
             purple: (i / 25) + 1,
         }
-    }));
+    })).collect::<HashSet<Code>>();
+    let codes = Arc::new(Mutex::new(codes));
 
+    // remove codes that would be unique without all tests
+    let rc_r = Arc::clone(&rules);
+    let rc_c = Arc::clone(&codes);
+    let super_unique = do_task("Removing solutions that don't require all tests ...", move || {
+        let mut rules = rc_r.lock().unwrap();
+        let mut codes = rc_c.lock().unwrap();
+        let mut super_unique = HashSet::new();
+        for _i in 0..no_rules {
+            let temp = rules.remove(0);
+            let solutions = categorize_codes(&codes, &rules);
+            let unique = find_unique(&solutions);
+            for u in unique {
+                super_unique.insert(u.1);
+            }
+            rules.push(temp);
+        }
+        for u in &super_unique {
+            codes.remove(u);
+        }
+        super_unique
+    });
+    if verbose {
+        for u in super_unique {
+            println!("Removed {}", u.to_string());
+        }
+    }
+
+    let rc_r = Arc::clone(&rules);
+    let rc_c = Arc::clone(&codes);
     // check which results these codes yield after running the "program".
     let solutions = do_task("Looking for unique solutions ...", move || {
-        let mut solutions: HashMap<Vec<u8>, Vec<Code>> = HashMap::new();
-        codes.for_each(|code| {
-            let results: Vec<u8> = rules.iter().filter_map(|rule| {
-                RULES[*rule](&code)
-            }).collect();
-            if results.len() < rules.len() {
-                return;
-            }
-            match solutions.get_mut(&results) {
-                Some(cur) => cur.push(code),
-                None => {
-                    solutions.insert(results, vec![code]);
-                },
-            }
-        });
-        solutions
+        let rules = rc_r.lock().unwrap();
+        let codes = rc_c.lock().unwrap();
+        categorize_codes(&codes, &rules)
     });
-
-    // only unique solutions are interesting.
-    let unique_solutions: Vec<Feasible<Code>> = solutions.iter().filter_map(|(k, v)| {
-        if v.len() == 1 {
-            return Some((k.clone(), v[0].clone()));
-        }
-        None
-    }).collect();
+    
+    // only unique solutions are interesting
+    let unique_solutions = find_unique(&solutions);
     if unique_solutions.len() == 0 {
         println!("This puzzle does not appear to be solvable. Please double-check your inputs.");
         return;
